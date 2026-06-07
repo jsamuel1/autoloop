@@ -99,7 +99,7 @@ export async function dispatchRun(
   return true;
 }
 
-function parseRunArgs(args: string[], bundleRoot: string): RunOptions {
+export function parseRunArgs(args: string[], bundleRoot: string): RunOptions {
   const options: RunOptions = {
     projectDir: ".",
     prompt: null,
@@ -346,7 +346,9 @@ function applyGlobalBackendOverride(options: RunOptions): RunOptions {
   };
 }
 
-async function runInlineChain(
+export type { RunOptions };
+
+export async function runInlineChain(
   chainCsv: string,
   projectDir: string,
   selfCmd: string,
@@ -369,7 +371,7 @@ async function runInlineChain(
   });
 }
 
-function normalizePrompt(prompt: string | null): string | null {
+export function normalizePrompt(prompt: string | null): string | null {
   if (prompt === null || prompt === "") return null;
   return prompt;
 }
@@ -434,7 +436,7 @@ function defaultChainProjectDir(bundleRoot: string): string {
   return bundleRoot;
 }
 
-function chainableOptions(opts: RunOptions): Record<string, unknown> {
+export function chainableOptions(opts: RunOptions): Record<string, unknown> {
   return {
     backendOverride: opts.backendOverride,
     configOverride: opts.configOverride,

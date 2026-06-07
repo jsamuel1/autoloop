@@ -6,6 +6,7 @@ import * as chains from "./chains.js";
 import { cliPrintEvent } from "./cli/event-printer.js";
 import { fail } from "./cli/fail.js";
 import { editDistance, suggestClosest } from "./cli/suggest.js";
+import { dispatchAcp } from "./commands/acp.js";
 import { cliVersion, dispatchCapabilities } from "./commands/capabilities.js";
 import { dispatchChain } from "./commands/chain.js";
 import { dispatchConfig } from "./commands/config.js";
@@ -150,6 +151,9 @@ async function dispatch(args: string[], argv: string[]): Promise<void> {
     case "dashboard":
       dispatchDashboard(args.slice(1), bundleRoot, selfCmd);
       return;
+    case "acp":
+      await dispatchAcp(args.slice(1), bundleRoot, selfCmd);
+      return;
     case "kanban":
       dispatchKanban(args.slice(1), bundleRoot, selfCmd);
       return;
@@ -229,6 +233,7 @@ const CLI_COMMANDS = [
   "control",
   "dashboard",
   "kanban",
+  "acp",
   "capabilities",
   "robot-docs",
   "help",
