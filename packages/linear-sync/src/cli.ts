@@ -140,7 +140,7 @@ async function main() {
 
   if (!subcommand || subcommand === "--help" || subcommand === "help") {
     console.log(
-      "Usage: linear-sync <pull|push|release> [options]\n" +
+      "Usage: autoloop-linear-sync <pull|push|release> [options]\n" +
         "  pull                  Pull Linear issues into task queue\n" +
         "  push                  Push completed tasks to Linear\n" +
         "  release <version>     Promote In-Review issues to Done\n" +
@@ -159,7 +159,7 @@ async function main() {
 
   if (subcommand === "pull") {
     const result = await pull(adapter, syncConfig, tasksApi, stateFile);
-    console.log(`linear-sync pull: added ${result.added} issue(s)`);
+    console.log(`autoloop-linear-sync pull: added ${result.added} issue(s)`);
   } else if (subcommand === "push") {
     const result = await push(
       adapter,
@@ -169,12 +169,12 @@ async function main() {
       noteCtx,
     );
     console.log(
-      `linear-sync push: transitioned ${result.transitioned}, created ${result.created}`,
+      `autoloop-linear-sync push: transitioned ${result.transitioned}, created ${result.created}`,
     );
   } else if (subcommand === "release") {
     const version = cliArgs[1];
     if (!version) {
-      console.error("Usage: linear-sync release <version>");
+      console.error("Usage: autoloop-linear-sync release <version>");
       process.exit(1);
     }
     const result = await release(
@@ -186,7 +186,7 @@ async function main() {
       noteCtx,
     );
     console.log(
-      `linear-sync release: promoted ${result.promoted} issue(s) to Done`,
+      `autoloop-linear-sync release: promoted ${result.promoted} issue(s) to Done`,
     );
   } else {
     console.error(`Unknown subcommand: ${subcommand}`);
@@ -196,6 +196,6 @@ async function main() {
 
 main().catch((err: unknown) => {
   const msg = err instanceof Error ? err.message : String(err);
-  console.error(`linear-sync error: ${msg}`);
+  console.error(`autoloop-linear-sync error: ${msg}`);
   process.exit(1);
 });

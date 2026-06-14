@@ -1,17 +1,17 @@
 # Example: autoloops.toml [hooks] wiring for issue sync.
 #
-# For a project using Linear (linear-sync):
+# For a project using Linear (autoloop-linear-sync):
 [hooks]
-pre_run        = "linear-sync pull"
-post_iteration = "linear-sync push"
-post_run       = "linear-sync push"
+pre_run        = "autoloop-linear-sync pull"
+post_iteration = "autoloop-linear-sync push"
+post_run       = "autoloop-linear-sync push"
 # strict = true   # Uncomment to abort the run if pull fails
 
-# For a project using GitHub (gh-sync):
+# For a project using GitHub (autoloop-gh-sync):
 # [hooks]
-# pre_run        = "gh-sync pull"
-# post_iteration = "gh-sync push"
-# post_run       = "gh-sync push"
+# pre_run        = "autoloop-gh-sync pull"
+# post_iteration = "autoloop-gh-sync push"
+# post_run       = "autoloop-gh-sync push"
 
 # The following env vars are available in every hook:
 #   AUTOLOOP_PROJECT_DIR   - the source project directory

@@ -23,7 +23,7 @@ export class LinearAdapter implements TrackerAdapter {
     const key = resolveApiKey(config);
     if (!key) {
       throw new Error(
-        "LINEAR_API_KEY env var or apiKey config is required for linear-sync",
+        "LINEAR_API_KEY env var or apiKey config is required for autoloop-linear-sync",
       );
     }
     this.client = new LinearClient({ apiKey: key });

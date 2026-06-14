@@ -2,9 +2,9 @@
 # Place this file at .autoloop/issue-sync.toml in the source project.
 # Add "!.autoloop/issue-sync.toml" to the project's .gitignore to track it.
 #
-# Run: LINEAR_API_KEY=<key> linear-sync pull
-#      LINEAR_API_KEY=<key> linear-sync push
-#      LINEAR_API_KEY=<key> linear-sync release v1.0.0
+# Run: LINEAR_API_KEY=<key> autoloop-linear-sync pull
+#      LINEAR_API_KEY=<key> autoloop-linear-sync push
+#      LINEAR_API_KEY=<key> autoloop-linear-sync release v1.0.0
 
 tracker = "linear"
 

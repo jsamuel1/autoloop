@@ -13,7 +13,7 @@
     }
   },
   "bin": {
-    "gh-sync": "dist/cli.js"
+    "autoloop-gh-sync": "dist/cli.js"
   },
   "files": [
     "dist"

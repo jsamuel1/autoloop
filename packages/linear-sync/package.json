@@ -13,7 +13,7 @@
     }
   },
   "bin": {
-    "linear-sync": "dist/cli.js"
+    "autoloop-linear-sync": "dist/cli.js"
   },
   "files": [
     "dist"

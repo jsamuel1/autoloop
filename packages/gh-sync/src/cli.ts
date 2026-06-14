@@ -107,7 +107,7 @@ async function main() {
   const tasksFile = makeTasksFile(projectDir);
 
   if (!subcommand || subcommand === "--help" || subcommand === "help") {
-    console.log("Usage: gh-sync <pull|push|release> [options]");
+    console.log("Usage: autoloop-gh-sync <pull|push|release> [options]");
     console.log(
       "  pull                  Pull issues from GitHub into task queue",
     );
@@ -130,16 +130,16 @@ async function main() {
 
   if (subcommand === "pull") {
     const result = await pull(adapter, config, tasksApi, stateFile);
-    console.log(`gh-sync pull: added ${result.added} issue(s)`);
+    console.log(`autoloop-gh-sync pull: added ${result.added} issue(s)`);
   } else if (subcommand === "push") {
     const result = await push(adapter, config, tasksApi, stateFile, noteCtx);
     console.log(
-      `gh-sync push: transitioned ${result.transitioned}, created ${result.created}`,
+      `autoloop-gh-sync push: transitioned ${result.transitioned}, created ${result.created}`,
     );
   } else if (subcommand === "release") {
     const version = cliArgs[1];
     if (!version) {
-      console.error("Usage: gh-sync release <version>");
+      console.error("Usage: autoloop-gh-sync release <version>");
       process.exit(1);
     }
     const result = await release(
@@ -151,7 +151,7 @@ async function main() {
       noteCtx,
     );
     console.log(
-      `gh-sync release: promoted ${result.promoted} issue(s) to Done`,
+      `autoloop-gh-sync release: promoted ${result.promoted} issue(s) to Done`,
     );
   } else {
     console.error(`Unknown subcommand: ${subcommand}`);
@@ -161,6 +161,6 @@ async function main() {
 
 main().catch((err: unknown) => {
   const msg = err instanceof Error ? err.message : String(err);
-  console.error(`gh-sync error: ${msg}`);
+  console.error(`autoloop-gh-sync error: ${msg}`);
   process.exit(1);
 });

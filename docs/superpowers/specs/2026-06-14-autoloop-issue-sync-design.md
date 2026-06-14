@@ -55,7 +55,7 @@ autoloop (fork)
   autoloop's task API, owns the task↔issue map and the pull/push/release behavior.
   Knows nothing about Linear or GitHub.
 - **Adapters** implement one small interface — `listIssues()`, `createIssue()`,
-  `transitionIssue()`, `commentIssue()`. `linear-sync` over MCP; `gh-sync` over `gh`.
+  `transitionIssue()`, `commentIssue()`. `autoloop-linear-sync` over MCP; `autoloop-gh-sync` over `gh`.
   Each exposes `pull` / `push` / `release` subcommands (thin wrappers over the core).
 - **autoloop `[hooks]`** — a new generic capability: configurable shell commands fired
   at four lifecycle points with run context as env vars. Reusable beyond issue sync.
@@ -69,10 +69,10 @@ New `[hooks]` config block. Each slot holds a shell command (or list of commands
 
 ```toml
 [hooks]
-pre_run        = "linear-sync pull"
-post_iteration = "linear-sync push --incremental"
-post_run       = "linear-sync push --final"
-# pre_iteration = "linear-sync pull"   # opt-in, off by default
+pre_run        = "autoloop-linear-sync pull"
+post_iteration = "autoloop-linear-sync push --incremental"
+post_run       = "autoloop-linear-sync push --final"
+# pre_iteration = "autoloop-linear-sync pull"   # opt-in, off by default
 ```
 
 Lifecycle points (symmetric, complete surface): `pre_run`, `pre_iteration`,
@@ -106,7 +106,7 @@ Two completion signals, because *committed ≠ released*:
 - **In Review = "done in code, awaiting release."** Done = released. Keeps Linear
   progress/cycle stats honest and aligns with the projects' "done means proven/released" goal.
 - Release promotion is an **explicit command**, scoped per repo (the two repos release on
-  independent cadences): `linear-sync release --repo library v4.4.0` promotes only
+  independent cadences): `autoloop-linear-sync release --repo library v4.4.0` promotes only
   In-Review issues labelled `repo:library`. Work never formally released stays in In Review.
 - New issues created by autoqa/autoreview land in **Todo**, labelled `repo:*` +
   `source:autoqa`, so they re-enter the pull cycle.
@@ -169,9 +169,9 @@ queued_label = "autoloop:queued"
 
 ## Authentication
 
-- **GitHub (`gh-sync`)** — no auth code; `gh` owns auth. **Built first as the proving
+- **GitHub (`autoloop-gh-sync`)** — no auth code; `gh` owns auth. **Built first as the proving
   adapter.**
-- **Linear (`linear-sync`)** — acts as an **MCP client to `mcp.linear.app`**, reusing the
+- **Linear (`autoloop-linear-sync`)** — acts as an **MCP client to `mcp.linear.app`**, reusing the
   OAuth token Claude Code already cached. (Note: there is **no official Linear CLI** — unlike
   GitHub's `gh` — so a CLI shell-out is not an option for Linear; the realistic transports are
   the MCP server, the GraphQL API, or the official `@linear/sdk`.)
@@ -188,8 +188,8 @@ queued_label = "autoloop:queued"
 
 - `issue-sync-core` unit-tested against a **fake in-memory adapter** (issues, transitions,
   comments) — covers pull dedup, push transition-vs-create, release promotion, idempotency.
-- `gh-sync` contract test against a scratch GitHub repo.
-- `linear-sync` contract test against the live MCP, behind an opt-in env flag.
+- `autoloop-gh-sync` contract test against a scratch GitHub repo.
+- `autoloop-linear-sync` contract test against the live MCP, behind an opt-in env flag.
 - Hook firing tested in the harness with a script that writes a sentinel file per slot;
   assert order (`pre_run`, `pre_iteration`, `post_iteration`, `post_run`), env var presence,
   and non-fatal-vs-strict failure behavior.
@@ -198,6 +198,6 @@ queued_label = "autoloop:queued"
 
 1. autoloop `[hooks]` feature (generic; independently useful).
 2. `issue-sync-core` + fake adapter + unit tests.
-3. `gh-sync` (proving adapter; no auth risk).
-4. `linear-sync` auth spike → adapter.
+3. `autoloop-gh-sync` (proving adapter; no auth risk).
+4. `autoloop-linear-sync` auth spike → adapter.
 5. Wire the two source projects' `issue-sync.toml` + autoloop `[hooks]` config.
