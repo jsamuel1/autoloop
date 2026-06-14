@@ -194,6 +194,40 @@ queued_label = "autoloop:queued"
   assert order (`pre_run`, `pre_iteration`, `post_iteration`, `post_run`), env var presence,
   and non-fatal-vs-strict failure behavior.
 
+## Linear "open in coding tool" integration
+
+Linear can launch a local command for an issue
+([docs](https://linear.app/docs/open-issues-with-custom-scripts)) via
+`~/.linear/coding-tools.json`: an `openIssue` block with `path` (absolute path to an
+executable), optional `args` (with `{{issue.identifier}}` / `{{issue.branchName}}` /
+`{{prompt}}` / `{{project.name}}` / `{{workDir}}` templating), and `env` (the `LINEAR_*`
+vars to inject: `LINEAR_PROMPT`, `LINEAR_ISSUE_IDENTIFIER`, `LINEAR_ISSUE_BRANCH_NAME`,
+`LINEAR_WORK_DIR`, `LINEAR_PROJECT_NAME`, …).
+
+We ship a thin launcher, **`autoloop-linear-open`** (a bin of `autoloop-linear-sync`),
+that Linear invokes. It:
+
+1. reads the injected `LINEAR_*` vars,
+2. `cd`s to `LINEAR_WORK_DIR`,
+3. checks out `LINEAR_ISSUE_BRANCH_NAME` (Linear's suggested branch → auto-links the
+   resulting commits/PR back to the issue),
+4. launches `autoloop run autocode` with the issue as the objective and the issue-sync
+   hooks wired (`pre_run`/`post_iteration`/`post_run` → `autoloop-linear-sync`), so the
+   run pulls the repo's Todo queue for context and pushes completion back (→ In Review).
+
+Example `~/.linear/coding-tools.json` is in
+[`examples/linear-coding-tools.json`](../examples/linear-coding-tools.json) (set `path`
+to the output of `which autoloop-linear-open`).
+
+**Secrets are out of scope for autoloop.** The launcher consumes `LINEAR_API_KEY` from
+its environment and does not resolve it from any secret manager. Linear does *not* inject
+the API key — only the issue-context `LINEAR_*` vars — so the operator is responsible for
+making `LINEAR_API_KEY` present in the launch environment. A GUI-triggered launch may not
+inherit a login shell; if so, point `coding-tools.json` `path` at a personal wrapper that
+exports the key (from whatever secret store you use) and `exec`s `autoloop-linear-open`,
+or use `launchctl setenv`. If the key is absent the launcher warns and the loop still runs
+with Linear sync skipped.
+
 ## Build order
 
 1. autoloop `[hooks]` feature (generic; independently useful).

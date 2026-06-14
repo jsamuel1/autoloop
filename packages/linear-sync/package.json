@@ -13,10 +13,12 @@
     }
   },
   "bin": {
-    "autoloop-linear-sync": "dist/cli.js"
+    "autoloop-linear-sync": "dist/cli.js",
+    "autoloop-linear-open": "bin/autoloop-linear-open"
   },
   "files": [
-    "dist"
+    "dist",
+    "bin"
   ],
   "engines": {
     "node": ">=18"
