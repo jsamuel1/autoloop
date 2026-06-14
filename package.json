@@ -34,7 +34,8 @@
     "packages/kanban",
     "packages/cli",
     "packages/issue-sync-core",
-    "packages/gh-sync"
+    "packages/gh-sync",
+    "packages/linear-sync"
   ],
   "repository": {
     "type": "git",

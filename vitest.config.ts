@@ -13,6 +13,7 @@ const ISSUE_SYNC_CORE = resolve(
   "packages/issue-sync-core/src",
 );
 const GH_SYNC = resolve(import.meta.dirname, "packages/gh-sync/src");
+const LINEAR_SYNC = resolve(import.meta.dirname, "packages/linear-sync/src");
 
 export default defineConfig({
   resolve: {
@@ -84,6 +85,7 @@ export default defineConfig({
       "@mobrienv/autoloop-harness": `${HARNESS}/index.ts`,
       "@mobrienv/autoloop-issue-sync-core": `${ISSUE_SYNC_CORE}/index.ts`,
       "@mobrienv/autoloop-gh-sync": `${GH_SYNC}/index.ts`,
+      "@mobrienv/autoloop-linear-sync": `${LINEAR_SYNC}/index.ts`,
     },
   },
   test: {
