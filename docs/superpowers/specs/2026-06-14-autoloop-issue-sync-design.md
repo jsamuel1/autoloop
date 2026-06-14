@@ -172,13 +172,17 @@ queued_label = "autoloop:queued"
 - **GitHub (`gh-sync`)** — no auth code; `gh` owns auth. **Built first as the proving
   adapter.**
 - **Linear (`linear-sync`)** — acts as an **MCP client to `mcp.linear.app`**, reusing the
-  OAuth token Claude Code already cached.
+  OAuth token Claude Code already cached. (Note: there is **no official Linear CLI** — unlike
+  GitHub's `gh` — so a CLI shell-out is not an option for Linear; the realistic transports are
+  the MCP server, the GraphQL API, or the official `@linear/sdk`.)
+  - **Decision:** MCP client (chosen 2026-06-14).
   - **Feasibility spike (first task):** locate Claude Code's cached Linear token; confirm
     `mcp.linear.app` accepts it headlessly. **Risk:** the token is scoped to
     `resource=mcp.linear.app` and may need refresh; an interactively-obtained token reused
     headlessly is the single biggest risk in this design.
-  - **Fallback:** documented `LINEAR_API_KEY` (personal API key) if token reuse proves
-    unworkable. The adapter interface is identical either way; only the transport changes.
+  - **Fallback:** the official **`@linear/sdk` + `LINEAR_API_KEY`** (personal API key) if
+    token reuse proves unworkable — first-party, typed, headless-native. The adapter
+    interface is identical either way; only the transport changes.
 
 ## Testing
 
