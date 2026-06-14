@@ -33,7 +33,8 @@
     "packages/dashboard",
     "packages/kanban",
     "packages/cli",
-    "packages/issue-sync-core"
+    "packages/issue-sync-core",
+    "packages/gh-sync"
   ],
   "repository": {
     "type": "git",

@@ -8,6 +8,11 @@ const CORE = resolve(import.meta.dirname, "packages/core/src");
 const HARNESS = resolve(import.meta.dirname, "packages/harness/src");
 const BACKENDS = resolve(import.meta.dirname, "packages/backends/src");
 const DASHBOARD = resolve(import.meta.dirname, "packages/dashboard/src");
+const ISSUE_SYNC_CORE = resolve(
+  import.meta.dirname,
+  "packages/issue-sync-core/src",
+);
+const GH_SYNC = resolve(import.meta.dirname, "packages/gh-sync/src");
 
 export default defineConfig({
   resolve: {
@@ -77,6 +82,8 @@ export default defineConfig({
       "@mobrienv/autoloop-harness/tools": `${HARNESS}/tools.ts`,
       "@mobrienv/autoloop-harness/prompt": `${HARNESS}/prompt.ts`,
       "@mobrienv/autoloop-harness": `${HARNESS}/index.ts`,
+      "@mobrienv/autoloop-issue-sync-core": `${ISSUE_SYNC_CORE}/index.ts`,
+      "@mobrienv/autoloop-gh-sync": `${GH_SYNC}/index.ts`,
     },
   },
   test: {
