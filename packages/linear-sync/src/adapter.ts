@@ -42,13 +42,16 @@ export class LinearAdapter implements TrackerAdapter {
     }
 
     const result = await this.client.issues({ filter });
-    return (result.nodes ?? []).map((i) => ({
-      id: i.id,
-      title: i.title,
-      status: i.state?.name ?? "Unknown",
-      branchName: i.branchName ?? undefined,
-      url: i.url ?? undefined,
-    }));
+    return Promise.all(
+      (result.nodes ?? []).map(async (i) => ({
+        id: i.id,
+        title: i.title,
+        // `state` is a lazy LinearFetch<WorkflowState> relation — await it.
+        status: (await i.state)?.name ?? "Unknown",
+        branchName: i.branchName ?? undefined,
+        url: i.url ?? undefined,
+      })),
+    );
   }
 
   async createIssue(input: CreateIssueInput): Promise<Issue> {
