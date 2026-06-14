@@ -175,14 +175,14 @@ queued_label = "autoloop:queued"
   OAuth token Claude Code already cached. (Note: there is **no official Linear CLI** — unlike
   GitHub's `gh` — so a CLI shell-out is not an option for Linear; the realistic transports are
   the MCP server, the GraphQL API, or the official `@linear/sdk`.)
-  - **Decision:** MCP client (chosen 2026-06-14).
-  - **Feasibility spike (first task):** locate Claude Code's cached Linear token; confirm
-    `mcp.linear.app` accepts it headlessly. **Risk:** the token is scoped to
-    `resource=mcp.linear.app` and may need refresh; an interactively-obtained token reused
-    headlessly is the single biggest risk in this design.
-  - **Fallback:** the official **`@linear/sdk` + `LINEAR_API_KEY`** (personal API key) if
-    token reuse proves unworkable — first-party, typed, headless-native. The adapter
-    interface is identical either way; only the transport changes.
+  - **Decision (revised 2026-06-14):** **`@linear/sdk` + `LINEAR_API_KEY`.** The initial
+    decision was the MCP client, but the implementation's auth spike confirmed the flagged
+    risk — reusing Claude Code's interactively-obtained, `resource=mcp.linear.app`-scoped
+    token headlessly is unworkable. The adapter therefore uses the official SDK + a personal
+    API key: first-party, typed, headless-native. The adapter interface is unchanged; only
+    the transport differs, so a future MCP-client transport could be swapped in behind it.
+  - **Superseded approach (MCP client):** locate Claude Code's cached Linear token and call
+    `mcp.linear.app` directly. Rejected after the spike (token scope + refresh fragility).
 
 ## Testing
 
