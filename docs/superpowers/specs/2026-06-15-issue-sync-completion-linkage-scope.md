@@ -1,7 +1,7 @@
 # Issue-sync push-back: completion linkage — scope
 
 **Date:** 2026-06-15
-**Status:** Scoping (for review — not yet implemented)
+**Status:** Approved 2026-06-15 (decisions resolved below) — implementing
 **Repo:** `jsamuel1/autoloop` · builds on `feat/issue-sync-bridge`
 
 ## Problem recap
@@ -101,14 +101,17 @@ commit SHAs).
 5. **Docs:** update the design doc's status model + examples; note the "reference the id
    in commits" precondition.
 
-## Open decisions (need your call)
+## Decisions (resolved 2026-06-15)
 
-- **D1 — per-issue gate:** keep "run completed" (current), or tighten to "completed **and**
-  ≥1 commit on the branch"? (Recommend tighten — consistent with whole-queue, avoids no-op
-  transitions.)
-- **D2 — match strictness:** plain identifier substring (`SAU-22`) in commit text, or
-  require a conventional marker (trailer `Linear: SAU-22` / "Fixes SAU-22")? (Recommend
-  substring with word boundaries — lowest friction, matches Linear's own behaviour.)
-- **D3 — run-range baseline:** `runStartSha` captured at pre_run (precise), vs.
-  branch-ahead-of-default (no new state, but wrong if working on `master`). (Recommend
-  `runStartSha` — precise and works on any branch.)
+- **D1 — per-issue gate:** **Completed AND commits landed.** Transition only when the run
+  completed AND ≥1 commit exists in the run range. (CLI sets `branchBased` true only when
+  commits landed.)
+- **D2 — match strictness:** **Identifier substring, word-bounded.** Match `SAU-22` /
+  `#42` in commit subject/body with boundaries so `SAU-2` ≠ `SAU-22`.
+- **D3 — run-range baseline:** **Capture run-start SHA at pre_run.** The CLI's `pull`
+  records `HEAD` keyed by `AUTOLOOP_RUN_ID`; `push --final` reads it and scans
+  `git log <startSha>..HEAD`. Works on any branch including `master`.
+
+Architecture note: all git lives in the CLI (gather commit texts, commits-landed,
+run-start SHA). Core stays git-free — `push` receives `commitTexts` + `branchBased`/
+`currentBranch` and does the matching/transition (new pure `referencedExternalIds`).

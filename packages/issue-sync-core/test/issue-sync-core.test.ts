@@ -9,7 +9,12 @@ import type {
 } from "../src/adapter.js";
 import type { IssueSyncConfig } from "../src/config.js";
 import type { TaskLike, TasksApi } from "../src/operations.js";
-import { pull, push, release } from "../src/operations.js";
+import {
+  pull,
+  push,
+  referencedExternalIds,
+  release,
+} from "../src/operations.js";
 import { loadState } from "../src/state.js";
 
 class FakeAdapter implements TrackerAdapter {
@@ -39,8 +44,14 @@ class FakeAdapter implements TrackerAdapter {
     this.comments.push({ id, body });
   }
 
-  seed(id: string, title: string, status: string, branchName?: string): void {
-    this.issues.set(id, { id, title, status, branchName });
+  seed(
+    id: string,
+    title: string,
+    status: string,
+    branchName?: string,
+    identifier?: string,
+  ): void {
+    this.issues.set(id, { id, title, status, branchName, identifier });
   }
 }
 
@@ -229,6 +240,71 @@ describe("push", () => {
       branchBased: true,
     });
     expect(adapter.transitions).toHaveLength(0);
+  });
+
+  it("commit-reference --final: transitions an issue a run commit references", async () => {
+    adapter.seed("i1", "Counter fix", "Todo", undefined, "SAU-22");
+    await pull(adapter, linearConfig, tasksApi, stateFile);
+    await push(adapter, linearConfig, tasksApi, stateFile, undefined, {
+      commitTexts: ["fix(counter): static export overlap (SAU-22)"],
+    });
+    expect(adapter.transitions).toContainEqual({
+      id: "i1",
+      state: "In Review",
+    });
+  });
+});
+
+describe("referencedExternalIds", () => {
+  const entries = [
+    {
+      taskId: "t1",
+      tracker: "linear",
+      externalId: "i1",
+      lastSyncedStatus: "Todo",
+      identifier: "SAU-22",
+    },
+    {
+      taskId: "t2",
+      tracker: "linear",
+      externalId: "i2",
+      lastSyncedStatus: "Todo",
+      identifier: "SAU-2",
+    },
+    {
+      taskId: "t3",
+      tracker: "github",
+      externalId: "42",
+      lastSyncedStatus: "open",
+      identifier: "#42",
+    },
+  ];
+
+  it("matches an identifier, word-bounded", () => {
+    expect(
+      referencedExternalIds(entries, ["fix: static export (SAU-22)"]),
+    ).toEqual(["i1"]);
+  });
+
+  it("does not match a longer identifier (SAU-2 must not match SAU-22)", () => {
+    expect(referencedExternalIds(entries, ["work on SAU-22"])).not.toContain(
+      "i2",
+    );
+  });
+
+  it("matches the exact shorter identifier", () => {
+    expect(referencedExternalIds(entries, ["done SAU-2 today"])).toContain(
+      "i2",
+    );
+  });
+
+  it("matches github #42 but not #421", () => {
+    expect(referencedExternalIds(entries, ["closes #42"])).toContain("42");
+    expect(referencedExternalIds(entries, ["closes #421"])).not.toContain("42");
+  });
+
+  it("returns [] when there are no commits", () => {
+    expect(referencedExternalIds(entries, [])).toEqual([]);
   });
 });
 

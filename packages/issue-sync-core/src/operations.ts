@@ -4,6 +4,7 @@ import {
   findByExternalId,
   findByTaskId,
   loadState,
+  type SyncEntry,
   saveState,
   upsertEntry,
 } from "./state.js";
@@ -31,6 +32,27 @@ export interface NoteContext {
 
 function sourceTag(tracker: string, externalId: string): string {
   return `${tracker}:${externalId}`;
+}
+
+/**
+ * External ids of mapped entries whose human identifier (e.g. "SAU-22", "#42") is
+ * referenced, word-bounded, in any of the given commit messages. Word boundaries so
+ * "SAU-2" does not match "SAU-22" and "#42" does not match "#421".
+ */
+export function referencedExternalIds(
+  entries: SyncEntry[],
+  commitTexts: string[],
+): string[] {
+  if (commitTexts.length === 0) return [];
+  const blob = commitTexts.join("\n");
+  const matched: string[] = [];
+  for (const e of entries) {
+    if (!e.identifier) continue;
+    const esc = e.identifier.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(`(?<![A-Za-z0-9-])${esc}(?![A-Za-z0-9-])`);
+    if (re.test(blob)) matched.push(e.externalId);
+  }
+  return matched;
 }
 
 export interface SyncedIssue {
@@ -103,7 +125,11 @@ export async function push(
   tasksApi: TasksApi,
   stateFile: string,
   noteCtx?: NoteContext,
-  opts?: { currentBranch?: string; branchBased?: boolean },
+  opts?: {
+    currentBranch?: string;
+    branchBased?: boolean;
+    commitTexts?: string[];
+  },
 ): Promise<PushResult> {
   const tracker = config.tracker;
   const reviewState = config.linear?.reviewState ?? "merged";
@@ -159,45 +185,63 @@ export async function push(
     }
   }
 
-  // Branch/run-based transition (only on `push --final`, i.e. at the end of a run
-  // that COMPLETED successfully — the caller gates `branchBased` on the run outcome).
-  // Moves any mapped issue whose suggested branch is the branch this run worked to
-  // In Review, even though no per-issue task was marked done.
+  // Reference-based transition (only on `push --final`, at the end of a run the caller
+  // has confirmed COMPLETED). Moves any mapped, not-yet-reviewed issue this run worked:
+  //   - branchBased: the issue's branch is the branch this run worked (caller sets this
+  //     true only when commits actually landed), or
+  //   - a commit in the run's range references the issue's identifier.
+  // No per-issue task needs to be marked done — autocode never does that.
+  const refIds = new Set<string>();
   if (opts?.branchBased && opts.currentBranch) {
-    const already = new Set(transitionedIssues.map((t) => t.externalId));
-    for (const entry of state.entries) {
-      if (
-        entry.lastSyncedStatus === reviewState ||
-        entry.lastSyncedStatus === doneState
-      )
-        continue;
-      if (!entry.branchName || entry.branchName !== opts.currentBranch)
-        continue;
-      if (already.has(entry.externalId)) continue;
-      await adapter.transitionIssue(entry.externalId, reviewState);
-      if (noteCtx) {
-        await adapter.commentIssue(
-          entry.externalId,
-          buildNoteBody(noteCtx, {
-            id: entry.taskId,
-            text: entry.title ?? entry.identifier ?? entry.externalId,
-            status: "done",
-            source: sourceTag(tracker, entry.externalId),
-          }),
-        );
+    for (const e of state.entries) {
+      if (e.branchName && e.branchName === opts.currentBranch) {
+        refIds.add(e.externalId);
       }
-      const updated = upsertEntry(state, {
-        ...entry,
-        lastSyncedStatus: reviewState,
-      });
-      Object.assign(state, updated);
-      transitionedIssues.push({
-        externalId: entry.externalId,
-        identifier: entry.identifier,
-        title: entry.title ?? "",
-        to: reviewState,
-      });
     }
+  }
+  for (const id of referencedExternalIds(
+    state.entries,
+    opts?.commitTexts ?? [],
+  )) {
+    refIds.add(id);
+  }
+
+  const alreadyTransitioned = new Set(
+    transitionedIssues.map((t) => t.externalId),
+  );
+  for (const externalId of refIds) {
+    if (alreadyTransitioned.has(externalId)) continue;
+    const entry = state.entries.find((e) => e.externalId === externalId);
+    if (!entry) continue;
+    if (
+      entry.lastSyncedStatus === reviewState ||
+      entry.lastSyncedStatus === doneState
+    )
+      continue;
+    await adapter.transitionIssue(externalId, reviewState);
+    if (noteCtx) {
+      await adapter.commentIssue(
+        externalId,
+        buildNoteBody(noteCtx, {
+          id: entry.taskId,
+          text: entry.title ?? entry.identifier ?? externalId,
+          status: "done",
+          source: sourceTag(tracker, externalId),
+        }),
+      );
+    }
+    const updated = upsertEntry(state, {
+      ...entry,
+      lastSyncedStatus: reviewState,
+    });
+    Object.assign(state, updated);
+    alreadyTransitioned.add(externalId);
+    transitionedIssues.push({
+      externalId,
+      identifier: entry.identifier,
+      title: entry.title ?? "",
+      to: reviewState,
+    });
   }
 
   saveState(stateFile, state);

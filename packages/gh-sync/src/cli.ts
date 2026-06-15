@@ -1,6 +1,12 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import type {
   IssueSyncConfig,
@@ -37,6 +43,54 @@ function getCurrentBranch(): string | undefined {
     encoding: "utf-8",
   });
   return result.status === 0 ? result.stdout.trim() : undefined;
+}
+
+function runStartFile(projectDir: string): string {
+  return join(projectDir, ".autoloop", "issue-sync-runstart.json");
+}
+
+// Record HEAD at run start (pre_run/pull), keyed by run id, so push --final can scan
+// the commits this run produced.
+function recordRunStart(projectDir: string, runId: string): void {
+  if (!runId) return;
+  const head = spawnSync("git", ["rev-parse", "HEAD"], { encoding: "utf-8" });
+  if (head.status !== 0 || !head.stdout) return;
+  const file = runStartFile(projectDir);
+  let map: Record<string, string> = {};
+  if (existsSync(file)) {
+    try {
+      map = JSON.parse(readFileSync(file, "utf-8")) as Record<string, string>;
+    } catch {
+      map = {};
+    }
+  }
+  map[runId] = head.stdout.trim();
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, `${JSON.stringify(map, null, 2)}\n`, "utf-8");
+}
+
+// Commit messages produced since this run started (runStartSha..HEAD).
+function commitTextsForRun(projectDir: string, runId: string): string[] {
+  if (!runId) return [];
+  const file = runStartFile(projectDir);
+  if (!existsSync(file)) return [];
+  let start: string | undefined;
+  try {
+    start = (JSON.parse(readFileSync(file, "utf-8")) as Record<string, string>)[
+      runId
+    ];
+  } catch {
+    return [];
+  }
+  if (!start) return [];
+  const r = spawnSync("git", ["log", `${start}..HEAD`, "--format=%B%x1e"], {
+    encoding: "utf-8",
+  });
+  if (r.status !== 0 || !r.stdout) return [];
+  return r.stdout
+    .split("\x1e")
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 function makeTasksFile(projectDir: string): string {
@@ -135,19 +189,24 @@ async function main() {
 
   if (subcommand === "pull") {
     const result = await pull(adapter, config, tasksApi, stateFile);
+    recordRunStart(projectDir, process.env.AUTOLOOP_RUN_ID ?? "");
     console.log(`autoloop-gh-sync pull: added ${result.added} issue(s)`);
     for (const it of result.addedIssues) {
       console.log(`  + ${it.identifier ?? it.externalId}  ${it.title}`);
     }
   } else if (subcommand === "push") {
     const final = cliArgs.includes("--final");
-    // Branch-based transition fires only at run end (--final) and only when the run
-    // completed successfully (see linear-sync for the rationale).
+    // Reference-based transition: run end (--final) + run completed + commits landed.
     const stopReason = process.env.AUTOLOOP_STOP_REASON;
     const runCompleted = !stopReason || stopReason === "completed";
+    const enable = final && runCompleted;
+    const commitTexts = enable
+      ? commitTextsForRun(projectDir, process.env.AUTOLOOP_RUN_ID ?? "")
+      : [];
     const result = await push(adapter, config, tasksApi, stateFile, noteCtx, {
       currentBranch: noteCtx.branch,
-      branchBased: final && runCompleted,
+      branchBased: enable && commitTexts.length > 0,
+      commitTexts,
     });
     console.log(
       `autoloop-gh-sync push: transitioned ${result.transitioned}, created ${result.created}`,
