@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { appendEvent } from "@mobrienv/autoloop-core/journal";
-import { log } from "./display.js";
+import { log, printHookOutput } from "./display.js";
 import type { LoopContext } from "./types.js";
 
 export interface HookEnv {
@@ -88,6 +88,11 @@ export function runHook(
   );
 
   const failed = result.status !== 0 || result.error;
+
+  // Surface hook output on screen (not just in the journal). Silent successes
+  // print nothing; anything with output or a failure shows a bordered block.
+  printHookOutput(name, result.status ?? -1, combined.trim(), Boolean(failed));
+
   if (failed) {
     // Surface the first meaningful line — prefer stderr (where errors land), then
     // stdout. Don't echo the literal "[stderr]" marker as the summary.

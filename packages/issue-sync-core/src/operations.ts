@@ -33,19 +33,42 @@ function sourceTag(tracker: string, externalId: string): string {
   return `${tracker}:${externalId}`;
 }
 
+export interface SyncedIssue {
+  externalId: string;
+  identifier?: string;
+  title: string;
+}
+export interface TransitionedIssue extends SyncedIssue {
+  to: string;
+}
+export interface PullResult {
+  added: number;
+  addedIssues: SyncedIssue[];
+}
+export interface PushResult {
+  transitioned: number;
+  created: number;
+  transitionedIssues: TransitionedIssue[];
+  createdIssues: SyncedIssue[];
+}
+export interface ReleaseResult {
+  promoted: number;
+  promotedIssues: Array<{ externalId: string; identifier?: string }>;
+}
+
 export async function pull(
   adapter: TrackerAdapter,
   config: IssueSyncConfig,
   tasksApi: TasksApi,
   stateFile: string,
-): Promise<{ added: number }> {
+): Promise<PullResult> {
   const tracker = config.tracker;
   const pullStates =
     config.linear?.pullStates ?? (config.github ? ["open"] : ["Todo"]);
   const state = loadState(stateFile);
 
   const issues = await adapter.listIssues(pullStates);
-  let added = 0;
+  const addedIssues: SyncedIssue[] = [];
 
   for (const issue of issues) {
     const existing = findByExternalId(state, tracker, issue.id);
@@ -59,13 +82,18 @@ export async function pull(
       externalId: issue.id,
       lastSyncedStatus: issue.status,
       branchName: issue.branchName,
+      identifier: issue.identifier,
     });
     Object.assign(state, newState);
-    added++;
+    addedIssues.push({
+      externalId: issue.id,
+      identifier: issue.identifier,
+      title: issue.title,
+    });
   }
 
   saveState(stateFile, state);
-  return { added };
+  return { added: addedIssues.length, addedIssues };
 }
 
 export async function push(
@@ -74,14 +102,14 @@ export async function push(
   tasksApi: TasksApi,
   stateFile: string,
   noteCtx?: NoteContext,
-): Promise<{ transitioned: number; created: number }> {
+): Promise<PushResult> {
   const tracker = config.tracker;
   const reviewState = config.linear?.reviewState ?? "merged";
   const state = loadState(stateFile);
 
   const doneTasks = tasksApi.listDone();
-  let transitioned = 0;
-  let created = 0;
+  const transitionedIssues: TransitionedIssue[] = [];
+  const createdIssues: SyncedIssue[] = [];
 
   for (const task of doneTasks) {
     const mapped = findByTaskId(state, task.id);
@@ -98,7 +126,12 @@ export async function push(
         lastSyncedStatus: reviewState,
       });
       Object.assign(state, updated);
-      transitioned++;
+      transitionedIssues.push({
+        externalId: mapped.externalId,
+        identifier: mapped.identifier,
+        title: task.text,
+        to: reviewState,
+      });
     } else {
       const issue = await adapter.createIssue({
         title: task.text,
@@ -110,14 +143,24 @@ export async function push(
         tracker,
         externalId: issue.id,
         lastSyncedStatus: issue.status,
+        identifier: issue.identifier,
       });
       Object.assign(state, newState);
-      created++;
+      createdIssues.push({
+        externalId: issue.id,
+        identifier: issue.identifier,
+        title: task.text,
+      });
     }
   }
 
   saveState(stateFile, state);
-  return { transitioned, created };
+  return {
+    transitioned: transitionedIssues.length,
+    created: createdIssues.length,
+    transitionedIssues,
+    createdIssues,
+  };
 }
 
 export async function release(
@@ -127,12 +170,12 @@ export async function release(
   version: string,
   repoLabel?: string,
   noteCtx?: NoteContext,
-): Promise<{ promoted: number }> {
+): Promise<ReleaseResult> {
   const reviewState = config.linear?.reviewState ?? "merged";
   const doneState = config.linear?.doneState ?? "Done";
   const state = loadState(stateFile);
 
-  let promoted = 0;
+  const promotedIssues: Array<{ externalId: string; identifier?: string }> = [];
 
   for (const entry of state.entries) {
     if (entry.lastSyncedStatus !== reviewState) continue;
@@ -144,11 +187,14 @@ export async function release(
       lastSyncedStatus: doneState,
     });
     Object.assign(state, updated);
-    promoted++;
+    promotedIssues.push({
+      externalId: entry.externalId,
+      identifier: entry.identifier,
+    });
   }
 
   saveState(stateFile, state);
-  return { promoted };
+  return { promoted: promotedIssues.length, promotedIssues };
 }
 
 function resolveCreateLabels(config: IssueSyncConfig): string[] {

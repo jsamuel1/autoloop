@@ -47,6 +47,28 @@ describe("integration: [hooks] lifecycle", () => {
     expect(journal).toContain('"hook": "post_run"');
   });
 
+  it("prints a hook output block to the screen", () => {
+    const project = makeTempProject("hooks-block");
+    const hookCmd = `echo "synced 3 issues: SAU-1 SAU-2 SAU-3"`;
+
+    const configPath = join(project, "autoloops.toml");
+    const existing = readFileSync(configPath, "utf-8");
+    writeFileSync(
+      configPath,
+      `${existing}\n[hooks]\npre_run = ${JSON.stringify(hookCmd)}\n`,
+      "utf-8",
+    );
+
+    const fixture = join(FIXTURES_DIR, "complete-success.json");
+    const res = runCli(["run", project, "test hook block"], {
+      MOCK_FIXTURE_PATH: fixture,
+    });
+
+    expect(res.status).toBe(0);
+    expect(res.stdout).toContain("── hook: pre_run");
+    expect(res.stdout).toContain("synced 3 issues: SAU-1 SAU-2 SAU-3");
+  });
+
   it("fires pre_iteration and post_iteration hooks with iteration env var", () => {
     const project = makeTempProject("hooks-iter");
     const iterDir = join(project, "iter-hooks");

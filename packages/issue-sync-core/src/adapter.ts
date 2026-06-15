@@ -1,5 +1,7 @@
 export interface Issue {
   id: string;
+  /** Human-facing identifier for display (e.g. "SAU-22" for Linear, "#42" for GitHub). */
+  identifier?: string;
   title: string;
   status: string;
   branchName?: string;

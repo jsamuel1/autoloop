@@ -76,6 +76,7 @@ export class GhAdapter implements TrackerAdapter {
 
     return parsed.map((i) => ({
       id: String(i.number),
+      identifier: `#${i.number}`,
       title: i.title,
       status: issueState(i.labels.map((l) => l.name)),
     }));
@@ -101,7 +102,13 @@ export class GhAdapter implements TrackerAdapter {
 
     const match = stdout.match(/\/issues\/(\d+)/);
     const id = match ? match[1] : "0";
-    return { id, title: input.title, status: "Todo", url: stdout.trim() };
+    return {
+      id,
+      identifier: `#${id}`,
+      title: input.title,
+      status: "Todo",
+      url: stdout.trim(),
+    };
   }
 
   async transitionIssue(id: string, targetState: string): Promise<void> {

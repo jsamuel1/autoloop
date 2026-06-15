@@ -165,6 +165,9 @@ async function main() {
   if (subcommand === "pull") {
     const result = await pull(adapter, syncConfig, tasksApi, stateFile);
     console.log(`autoloop-linear-sync pull: added ${result.added} issue(s)`);
+    for (const it of result.addedIssues) {
+      console.log(`  + ${it.identifier ?? it.externalId}  ${it.title}`);
+    }
   } else if (subcommand === "push") {
     const result = await push(
       adapter,
@@ -176,6 +179,16 @@ async function main() {
     console.log(
       `autoloop-linear-sync push: transitioned ${result.transitioned}, created ${result.created}`,
     );
+    for (const it of result.transitionedIssues) {
+      console.log(
+        `  → ${it.identifier ?? it.externalId} → ${it.to}  ${it.title}`,
+      );
+    }
+    for (const it of result.createdIssues) {
+      console.log(
+        `  + ${it.identifier ?? it.externalId} (created)  ${it.title}`,
+      );
+    }
   } else if (subcommand === "release") {
     const version = cliArgs[1];
     if (!version) {
@@ -193,6 +206,9 @@ async function main() {
     console.log(
       `autoloop-linear-sync release: promoted ${result.promoted} issue(s) to Done`,
     );
+    for (const it of result.promotedIssues) {
+      console.log(`  ✓ ${it.identifier ?? it.externalId} → Done`);
+    }
   } else {
     console.error(`Unknown subcommand: ${subcommand}`);
     process.exit(1);

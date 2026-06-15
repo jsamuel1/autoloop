@@ -7,6 +7,8 @@ export interface SyncEntry {
   externalId: string;
   lastSyncedStatus: string;
   branchName?: string;
+  /** Human-facing identifier (e.g. "SAU-22") carried for display on push/release. */
+  identifier?: string;
 }
 
 export interface SyncState {

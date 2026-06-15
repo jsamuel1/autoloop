@@ -45,6 +45,7 @@ export class LinearAdapter implements TrackerAdapter {
     return Promise.all(
       (result.nodes ?? []).map(async (i) => ({
         id: i.id,
+        identifier: i.identifier,
         title: i.title,
         // `state` is a lazy LinearFetch<WorkflowState> relation — await it.
         status: (await i.state)?.name ?? "Unknown",
@@ -85,6 +86,7 @@ export class LinearAdapter implements TrackerAdapter {
     if (!created) throw new Error("Linear createIssue returned no issue");
     return {
       id: created.id,
+      identifier: created.identifier,
       title: created.title,
       status: (await created.state)?.name ?? "Todo",
       branchName: created.branchName ?? undefined,
