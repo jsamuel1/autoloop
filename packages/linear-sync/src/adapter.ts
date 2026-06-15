@@ -116,4 +116,8 @@ export class LinearAdapter implements TrackerAdapter {
   async commentIssue(id: string, body: string): Promise<void> {
     await this.client.createComment({ issueId: id, body });
   }
+
+  async archiveIssue(id: string): Promise<void> {
+    await this.client.archiveIssue(id);
+  }
 }

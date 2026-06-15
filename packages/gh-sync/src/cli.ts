@@ -65,7 +65,28 @@ function recordRunStart(projectDir: string, runId: string): void {
     }
   }
   map[runId] = head.stdout.trim();
+  // Cap growth: keep the most recent 50 run entries.
+  const keys = Object.keys(map);
+  if (keys.length > 50) {
+    for (const k of keys.slice(0, keys.length - 50)) delete map[k];
+  }
   mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, `${JSON.stringify(map, null, 2)}\n`, "utf-8");
+}
+
+// Drop a run's start SHA once push --final has consumed it, so the file stays small.
+function pruneRunStart(projectDir: string, runId: string): void {
+  if (!runId) return;
+  const file = runStartFile(projectDir);
+  if (!existsSync(file)) return;
+  let map: Record<string, string> = {};
+  try {
+    map = JSON.parse(readFileSync(file, "utf-8")) as Record<string, string>;
+  } catch {
+    return;
+  }
+  if (!(runId in map)) return;
+  delete map[runId];
   writeFileSync(file, `${JSON.stringify(map, null, 2)}\n`, "utf-8");
 }
 
@@ -221,6 +242,7 @@ async function main() {
         `  + ${it.identifier ?? it.externalId} (created)  ${it.title}`,
       );
     }
+    if (final) pruneRunStart(projectDir, process.env.AUTOLOOP_RUN_ID ?? "");
   } else if (subcommand === "release") {
     const version = cliArgs[1];
     if (!version) {
@@ -240,6 +262,15 @@ async function main() {
     );
     for (const it of result.promotedIssues) {
       console.log(`  ✓ ${it.identifier ?? it.externalId} → Done`);
+      // Delete the merged per-issue branch (local, safe: -d only removes if merged).
+      if (it.branchName) {
+        const del = spawnSync("git", ["branch", "-d", it.branchName], {
+          encoding: "utf-8",
+        });
+        if (del.status === 0) {
+          console.log(`    deleted merged branch ${it.branchName}`);
+        }
+      }
     }
   } else {
     console.error(`Unknown subcommand: ${subcommand}`);

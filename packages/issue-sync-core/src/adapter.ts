@@ -19,4 +19,6 @@ export interface TrackerAdapter {
   createIssue(input: CreateIssueInput): Promise<Issue>;
   transitionIssue(id: string, targetState: string): Promise<void>;
   commentIssue(id: string, body: string): Promise<void>;
+  /** Optional: archive a terminal (Done) issue. GitHub omits it (issues are closed). */
+  archiveIssue?(id: string): Promise<void>;
 }

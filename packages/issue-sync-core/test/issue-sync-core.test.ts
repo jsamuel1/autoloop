@@ -21,6 +21,7 @@ class FakeAdapter implements TrackerAdapter {
   issues: Map<string, Issue> = new Map();
   transitions: Array<{ id: string; state: string }> = [];
   comments: Array<{ id: string; body: string }> = [];
+  archived: string[] = [];
   nextId = 1;
 
   async listIssues(states: string[]): Promise<Issue[]> {
@@ -42,6 +43,10 @@ class FakeAdapter implements TrackerAdapter {
 
   async commentIssue(id: string, body: string): Promise<void> {
     this.comments.push({ id, body });
+  }
+
+  async archiveIssue(id: string): Promise<void> {
+    this.archived.push(id);
   }
 
   seed(
@@ -328,6 +333,17 @@ describe("release", () => {
     const result = await release(adapter, linearConfig, stateFile, "v1.0.0");
     expect(result.promoted).toBe(1);
     expect(adapter.transitions).toContainEqual({ id: "i1", state: "Done" });
+  });
+
+  it("archives promoted issues and returns their branch", async () => {
+    adapter.seed("i1", "Fix bug A", "Todo", "feat/bug-a");
+    await pull(adapter, linearConfig, tasksApi, stateFile);
+    tasksApi.markDone(tasksApi.listOpen()[0].id);
+    await push(adapter, linearConfig, tasksApi, stateFile);
+
+    const result = await release(adapter, linearConfig, stateFile, "v1.0.0");
+    expect(adapter.archived).toContain("i1");
+    expect(result.promotedIssues[0].branchName).toBe("feat/bug-a");
   });
 
   it("posts a version comment on release", async () => {

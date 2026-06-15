@@ -75,7 +75,11 @@ export interface PushResult {
 }
 export interface ReleaseResult {
   promoted: number;
-  promotedIssues: Array<{ externalId: string; identifier?: string }>;
+  promotedIssues: Array<{
+    externalId: string;
+    identifier?: string;
+    branchName?: string;
+  }>;
 }
 
 export async function pull(
@@ -265,13 +269,18 @@ export async function release(
   const doneState = config.linear?.doneState ?? "Done";
   const state = loadState(stateFile);
 
-  const promotedIssues: Array<{ externalId: string; identifier?: string }> = [];
+  const promotedIssues: Array<{
+    externalId: string;
+    identifier?: string;
+    branchName?: string;
+  }> = [];
 
   for (const entry of state.entries) {
     if (entry.lastSyncedStatus !== reviewState) continue;
     await adapter.transitionIssue(entry.externalId, doneState);
     const comment = buildReleaseComment(version, repoLabel, noteCtx);
     await adapter.commentIssue(entry.externalId, comment);
+    if (adapter.archiveIssue) await adapter.archiveIssue(entry.externalId);
     const updated = upsertEntry(state, {
       ...entry,
       lastSyncedStatus: doneState,
@@ -280,6 +289,7 @@ export async function release(
     promotedIssues.push({
       externalId: entry.externalId,
       identifier: entry.identifier,
+      branchName: entry.branchName,
     });
   }
 

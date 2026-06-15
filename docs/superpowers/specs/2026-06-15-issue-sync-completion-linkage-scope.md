@@ -115,3 +115,20 @@ commit SHAs).
 Architecture note: all git lives in the CLI (gather commit texts, commits-landed,
 run-start SHA). Core stays git-free — `push` receives `commitTexts` + `branchBased`/
 `currentBranch` and does the matching/transition (new pure `referencedExternalIds`).
+
+## Cleanup automation (shipped 2026-06-15)
+
+Automatic cleanup of what's now done:
+
+- **Run-start file pruning** — `push --final` drops its run's entry from
+  `.autoloop/issue-sync-runstart.json`, and `pull` caps the file to the most recent 50
+  runs, so the file (added for commit-range scanning) can't grow unbounded.
+- **Stuck-run reconcile** — `autoloop runs clean --reconcile` marks runs still recorded
+  `running` whose OS process is gone (`isProcessAlive`) as `stopped` (append-only
+  registry write). Fixes the rot `doctor` detects but couldn't fix. Run dirs then become
+  eligible for the existing age-based `runs clean`.
+- **Merged-branch deletion** — `release` deletes each promoted issue's per-issue branch
+  locally with `git branch -d` (safe — only removes if merged; remote branches untouched).
+- **Done-issue archive** — `release` archives each promoted issue via the adapter
+  (`TrackerAdapter.archiveIssue?`): Linear `client.archiveIssue`; GitHub omits it (issues
+  are already closed on Done). Pairs with Linear's workspace-level auto-archive setting.
