@@ -83,6 +83,7 @@ export async function pull(
       lastSyncedStatus: issue.status,
       branchName: issue.branchName,
       identifier: issue.identifier,
+      title: issue.title,
     });
     Object.assign(state, newState);
     addedIssues.push({
@@ -102,9 +103,11 @@ export async function push(
   tasksApi: TasksApi,
   stateFile: string,
   noteCtx?: NoteContext,
+  opts?: { currentBranch?: string; branchBased?: boolean },
 ): Promise<PushResult> {
   const tracker = config.tracker;
   const reviewState = config.linear?.reviewState ?? "merged";
+  const doneState = config.linear?.doneState ?? "Done";
   const state = loadState(stateFile);
 
   const doneTasks = tasksApi.listDone();
@@ -144,12 +147,55 @@ export async function push(
         externalId: issue.id,
         lastSyncedStatus: issue.status,
         identifier: issue.identifier,
+        title: task.text,
+        branchName: issue.branchName,
       });
       Object.assign(state, newState);
       createdIssues.push({
         externalId: issue.id,
         identifier: issue.identifier,
         title: task.text,
+      });
+    }
+  }
+
+  // Branch/run-based transition (only on `push --final`, i.e. at the end of a run
+  // that COMPLETED successfully — the caller gates `branchBased` on the run outcome).
+  // Moves any mapped issue whose suggested branch is the branch this run worked to
+  // In Review, even though no per-issue task was marked done.
+  if (opts?.branchBased && opts.currentBranch) {
+    const already = new Set(transitionedIssues.map((t) => t.externalId));
+    for (const entry of state.entries) {
+      if (
+        entry.lastSyncedStatus === reviewState ||
+        entry.lastSyncedStatus === doneState
+      )
+        continue;
+      if (!entry.branchName || entry.branchName !== opts.currentBranch)
+        continue;
+      if (already.has(entry.externalId)) continue;
+      await adapter.transitionIssue(entry.externalId, reviewState);
+      if (noteCtx) {
+        await adapter.commentIssue(
+          entry.externalId,
+          buildNoteBody(noteCtx, {
+            id: entry.taskId,
+            text: entry.title ?? entry.identifier ?? entry.externalId,
+            status: "done",
+            source: sourceTag(tracker, entry.externalId),
+          }),
+        );
+      }
+      const updated = upsertEntry(state, {
+        ...entry,
+        lastSyncedStatus: reviewState,
+      });
+      Object.assign(state, updated);
+      transitionedIssues.push({
+        externalId: entry.externalId,
+        identifier: entry.identifier,
+        title: entry.title ?? "",
+        to: reviewState,
       });
     }
   }

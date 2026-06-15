@@ -140,7 +140,15 @@ async function main() {
       console.log(`  + ${it.identifier ?? it.externalId}  ${it.title}`);
     }
   } else if (subcommand === "push") {
-    const result = await push(adapter, config, tasksApi, stateFile, noteCtx);
+    const final = cliArgs.includes("--final");
+    // Branch-based transition fires only at run end (--final) and only when the run
+    // completed successfully (see linear-sync for the rationale).
+    const stopReason = process.env.AUTOLOOP_STOP_REASON;
+    const runCompleted = !stopReason || stopReason === "completed";
+    const result = await push(adapter, config, tasksApi, stateFile, noteCtx, {
+      currentBranch: noteCtx.branch,
+      branchBased: final && runCompleted,
+    });
     console.log(
       `autoloop-gh-sync push: transitioned ${result.transitioned}, created ${result.created}`,
     );

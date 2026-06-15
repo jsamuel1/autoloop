@@ -39,8 +39,8 @@ class FakeAdapter implements TrackerAdapter {
     this.comments.push({ id, body });
   }
 
-  seed(id: string, title: string, status: string): void {
-    this.issues.set(id, { id, title, status });
+  seed(id: string, title: string, status: string, branchName?: string): void {
+    this.issues.set(id, { id, title, status, branchName });
   }
 }
 
@@ -195,6 +195,40 @@ describe("push", () => {
     });
     expect(adapter.comments).toHaveLength(1);
     expect(adapter.comments[0].body).toContain("run-123");
+  });
+
+  it("branch-based --final: transitions the issue on the run's branch", async () => {
+    adapter.seed("i1", "Fix bug A", "Todo", "feat/bug-a");
+    await pull(adapter, linearConfig, tasksApi, stateFile);
+    // No task marked done — completion comes from the run's branch + --final.
+    await push(adapter, linearConfig, tasksApi, stateFile, undefined, {
+      currentBranch: "feat/bug-a",
+      branchBased: true,
+    });
+    expect(adapter.transitions).toContainEqual({
+      id: "i1",
+      state: "In Review",
+    });
+  });
+
+  it("branch-based: no transition without --final (branchBased false)", async () => {
+    adapter.seed("i1", "Fix bug A", "Todo", "feat/bug-a");
+    await pull(adapter, linearConfig, tasksApi, stateFile);
+    await push(adapter, linearConfig, tasksApi, stateFile, undefined, {
+      currentBranch: "feat/bug-a",
+      branchBased: false,
+    });
+    expect(adapter.transitions).toHaveLength(0);
+  });
+
+  it("branch-based: does not transition issues on a different branch", async () => {
+    adapter.seed("i1", "Fix bug A", "Todo", "feat/bug-a");
+    await pull(adapter, linearConfig, tasksApi, stateFile);
+    await push(adapter, linearConfig, tasksApi, stateFile, undefined, {
+      currentBranch: "some-other-branch",
+      branchBased: true,
+    });
+    expect(adapter.transitions).toHaveLength(0);
   });
 });
 

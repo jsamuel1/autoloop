@@ -169,12 +169,22 @@ async function main() {
       console.log(`  + ${it.identifier ?? it.externalId}  ${it.title}`);
     }
   } else if (subcommand === "push") {
+    const final = cliArgs.includes("--final");
+    // Branch-based transition fires only at run end (--final) and only when the run
+    // completed successfully. A manual `push --final` (no stop reason in env) counts
+    // as an explicit completion; a hook firing after a failed/timed-out run does not.
+    const stopReason = process.env.AUTOLOOP_STOP_REASON;
+    const runCompleted = !stopReason || stopReason === "completed";
     const result = await push(
       adapter,
       syncConfig,
       tasksApi,
       stateFile,
       noteCtx,
+      {
+        currentBranch: noteCtx.branch,
+        branchBased: final && runCompleted,
+      },
     );
     console.log(
       `autoloop-linear-sync push: transitioned ${result.transitioned}, created ${result.created}`,

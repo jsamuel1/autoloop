@@ -298,7 +298,12 @@ export async function run(
     }
   }
 
-  runHook(loop, "post_run", loop.hooks.postRun, buildHookEnv(loop));
+  runHook(
+    loop,
+    "post_run",
+    loop.hooks.postRun,
+    buildHookEnv(loop, { stopReason: summary.stopReason }),
+  );
   runFinishNotification({
     projectDir: loop.paths.mainProjectDir,
     journalFile: loop.paths.journalFile,

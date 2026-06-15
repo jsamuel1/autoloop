@@ -84,6 +84,8 @@ Context passed as env vars to every hook:
 - `AUTOLOOP_ITERATION` (iteration hooks)
 - `AUTOLOOP_GIT_SHA_BEFORE` / `AUTOLOOP_GIT_SHA_AFTER` (iteration hooks — lets push
   attribute the commit range for that iteration)
+- `AUTOLOOP_STOP_REASON` (post_run only) — the run outcome (`"completed"` = success),
+  so `push --final` can gate branch-based transitions on the run having finished cleanly
 
 **Failure policy:** hooks are **non-fatal by default** (log to the run journal + continue,
 so a tracker outage never kills a loop). `hooks.strict = true` makes a `pre_run` failure
@@ -142,6 +144,13 @@ Notes are configurable (on by default).
 - **push:** for each newly-completed task → if mapped, transition the issue (→ In Review) +
   post notes; if unmapped (autoqa/autoreview origin) → create issue in Todo, record mapping,
   post notes.
+- **push `--final` (branch/run-based):** at the end of a run that **completed successfully**
+  (`AUTOLOOP_STOP_REASON == "completed"`), also move the mapped issue whose stored
+  `branchName` equals the run's current branch to In Review. This is the reliable trigger
+  for the per-issue `autoloop-linear-open` flow, where autoloop's run-scoped task isolation
+  means the pulled task is rarely marked "done" in the file push reads. A timed-out or failed
+  run does not transition anything. (A manual `push --final` with no stop reason in the env is
+  treated as an explicit completion.)
 - **release:** promote mapped issues currently in In Review → Done for the given repo scope.
 
 Every operation is keyed on the state file, so re-running `pull`/`push`/`release` is

@@ -40,7 +40,7 @@ nohup autoloop run -b claude-sdk autocode \
   --set backend.timeout_ms=1800000 \
   --set hooks.pre_run="autoloop-linear-sync pull" \
   --set hooks.post_iteration="autoloop-linear-sync push" \
-  --set hooks.post_run="autoloop-linear-sync push" \
+  --set hooks.post_run="autoloop-linear-sync push --final" \
   "$PROMPT (Linear $ISSUE)" >"$LOG" 2>&1 &
 
 echo "autoloop launched for ${ISSUE:-issue} in $WORKDIR (branch ${BRANCH:-current})."

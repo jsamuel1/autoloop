@@ -9,6 +9,8 @@ export interface SyncEntry {
   branchName?: string;
   /** Human-facing identifier (e.g. "SAU-22") carried for display on push/release. */
   identifier?: string;
+  /** Issue title, carried so branch-based push can comment/report without the task. */
+  title?: string;
 }
 
 export interface SyncState {

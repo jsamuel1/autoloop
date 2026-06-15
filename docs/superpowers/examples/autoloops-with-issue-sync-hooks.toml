@@ -4,14 +4,18 @@
 [hooks]
 pre_run        = "autoloop-linear-sync pull"
 post_iteration = "autoloop-linear-sync push"
-post_run       = "autoloop-linear-sync push"
+post_run       = "autoloop-linear-sync push --final"
 # strict = true   # Uncomment to abort the run if pull fails
+
+# `push --final` additionally moves the issue whose branch this run worked to
+# In Review — but only when the run completed successfully (AUTOLOOP_STOP_REASON
+# == "completed"), so a timed-out/failed run won't mark work as reviewed.
 
 # For a project using GitHub (autoloop-gh-sync):
 # [hooks]
 # pre_run        = "autoloop-gh-sync pull"
 # post_iteration = "autoloop-gh-sync push"
-# post_run       = "autoloop-gh-sync push"
+# post_run       = "autoloop-gh-sync push --final"
 
 # The following env vars are available in every hook:
 #   AUTOLOOP_PROJECT_DIR   - the source project directory
@@ -21,3 +25,4 @@ post_run       = "autoloop-linear-sync push"
 #   AUTOLOOP_ITERATION     - current iteration number (iteration hooks only)
 #   AUTOLOOP_GIT_SHA_BEFORE - git HEAD before the iteration (iteration hooks)
 #   AUTOLOOP_GIT_SHA_AFTER  - git HEAD after the iteration (iteration hooks)
+#   AUTOLOOP_STOP_REASON    - run outcome ("completed" = success); set on post_run

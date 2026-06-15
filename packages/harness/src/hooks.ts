@@ -11,11 +11,18 @@ export interface HookEnv {
   AUTOLOOP_ITERATION?: string;
   AUTOLOOP_GIT_SHA_BEFORE?: string;
   AUTOLOOP_GIT_SHA_AFTER?: string;
+  /** Run stop reason, set on post_run (e.g. "completed" = success). */
+  AUTOLOOP_STOP_REASON?: string;
 }
 
 export function buildHookEnv(
   loop: LoopContext,
-  extra?: { iteration?: number; gitShaBefore?: string; gitShaAfter?: string },
+  extra?: {
+    iteration?: number;
+    gitShaBefore?: string;
+    gitShaAfter?: string;
+    stopReason?: string;
+  },
 ): HookEnv {
   const env: HookEnv = {
     // The work dir is the repo being worked (where .autoloop/issue-sync.toml lives);
@@ -33,6 +40,9 @@ export function buildHookEnv(
   }
   if (extra?.gitShaAfter !== undefined) {
     env.AUTOLOOP_GIT_SHA_AFTER = extra.gitShaAfter;
+  }
+  if (extra?.stopReason !== undefined) {
+    env.AUTOLOOP_STOP_REASON = extra.stopReason;
   }
   return env;
 }
