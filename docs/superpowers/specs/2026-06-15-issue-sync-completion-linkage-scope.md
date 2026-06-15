@@ -106,15 +106,37 @@ commit SHAs).
 - **D1 — per-issue gate:** **Completed AND commits landed.** Transition only when the run
   completed AND ≥1 commit exists in the run range. (CLI sets `branchBased` true only when
   commits landed.)
-- **D2 — match strictness:** **Identifier substring, word-bounded.** Match `SAU-22` /
-  `#42` in commit subject/body with boundaries so `SAU-2` ≠ `SAU-22`.
+- **D2 — match strictness:** **Closing-keyword or tagged form** (revised in the
+  2026-06-15 refactor — the original word-bounded *substring* matched bare mentions like
+  "see SAU-19" and was a false-positive smell). `closedExternalIds` now matches only
+  `fixes/closes/resolves <id>` or a trailing `(id)` / `[id]` tag, boundary-checked so
+  `SAU-2` ≠ `SAU-22`.
 - **D3 — run-range baseline:** **Capture run-start SHA at pre_run.** The CLI's `pull`
   records `HEAD` keyed by `AUTOLOOP_RUN_ID`; `push --final` reads it and scans
   `git log <startSha>..HEAD`. Works on any branch including `master`.
 
-Architecture note: all git lives in the CLI (gather commit texts, commits-landed,
-run-start SHA). Core stays git-free — `push` receives `commitTexts` + `branchBased`/
-`currentBranch` and does the matching/transition (new pure `referencedExternalIds`).
+Architecture note: all git lives in the CLI (gather commit texts, run-start SHA via
+`git rev-parse`/`git log`). Core stays git-free — `push` receives `commitTexts` +
+`branchBased`/`currentBranch` and does the matching/transition (pure `closedExternalIds`).
+
+## 2026-06-15 refactor (post-review hardening)
+
+Roast-driven cleanup, same behaviour where correct:
+
+- **State integrity:** `pull`/`push`/`release` now run their load-modify-save under a
+  `withStateLock` file lock (parallel runs share a checkout) and write atomically
+  (temp+rename). Per-issue `try/catch` means one failing tracker call no longer aborts the
+  batch or strands local state behind Linear — successes persist, failures retry next run.
+- **Run-start lives in the state file** (`state.runStart`), not a separate
+  `issue-sync-runstart.json`; `recordRunStart`/`takeRunStart` (consume-on-read) replace the
+  per-CLI prune/cap logic. One file, one lock.
+- **De-duplication:** `createJsonlTasksApi` + run-start helpers moved into core; the two
+  CLIs dropped ~260 lines of copy-paste (322→189, 285→156).
+- **False-positive fix:** matcher tightened (D2 above).
+- **Manual `push --final`** transitions on branch-match again (explicit operator intent;
+  the commits-landed gate now applies only to hook runs that carry a run id).
+- **`release --no-archive`** opt-out; branch deletion skips the current branch and reports
+  kept-vs-deleted instead of failing silently.
 
 ## Cleanup automation (shipped 2026-06-15)
 

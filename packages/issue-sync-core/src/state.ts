@@ -1,4 +1,14 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname } from "node:path";
 
 export interface SyncEntry {
@@ -15,6 +25,8 @@ export interface SyncEntry {
 
 export interface SyncState {
   entries: SyncEntry[];
+  /** Run-start git SHAs keyed by run id, so push can scan the run's commit range. */
+  runStart?: Record<string, string>;
 }
 
 export function loadState(stateFile: string): SyncState {
@@ -38,7 +50,56 @@ export function loadState(stateFile: string): SyncState {
 
 export function saveState(stateFile: string, state: SyncState): void {
   mkdirSync(dirname(stateFile), { recursive: true });
-  writeFileSync(stateFile, `${JSON.stringify(state, null, 2)}\n`, "utf-8");
+  // Write atomically so a crash or concurrent reader never sees a torn file.
+  const tmp = `${stateFile}.tmp.${process.pid}`;
+  writeFileSync(tmp, `${JSON.stringify(state, null, 2)}\n`, "utf-8");
+  renameSync(tmp, stateFile);
+}
+
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/**
+ * Serialize a load-modify-save section across concurrent runs (autoloop allows
+ * parallel runs on one checkout). Exclusive lockfile, bounded wait, stale-steal.
+ */
+export async function withStateLock<T>(
+  stateFile: string,
+  fn: () => Promise<T> | T,
+): Promise<T> {
+  const lockPath = `${stateFile}.lock`;
+  const TIMEOUT_MS = 10_000;
+  const STALE_MS = 60_000;
+  const start = Date.now();
+  for (;;) {
+    try {
+      closeSync(openSync(lockPath, "wx"));
+      break;
+    } catch {
+      try {
+        if (Date.now() - statSync(lockPath).mtimeMs > STALE_MS) {
+          unlinkSync(lockPath);
+          continue;
+        }
+      } catch {
+        /* lock vanished between calls — retry immediately */
+      }
+      if (Date.now() - start > TIMEOUT_MS) {
+        throw new Error(`issue-sync: timed out acquiring ${lockPath}`);
+      }
+      sleepSync(50);
+    }
+  }
+  try {
+    return await fn();
+  } finally {
+    try {
+      unlinkSync(lockPath);
+    } catch {
+      /* already released */
+    }
+  }
 }
 
 export function findByExternalId(
@@ -60,14 +121,46 @@ export function findByTaskId(
 
 export function upsertEntry(state: SyncState, entry: SyncEntry): SyncState {
   const idx = state.entries.findIndex((e) => e.taskId === entry.taskId);
-  if (idx >= 0) {
-    return {
-      entries: [
-        ...state.entries.slice(0, idx),
-        entry,
-        ...state.entries.slice(idx + 1),
-      ],
-    };
-  }
-  return { entries: [...state.entries, entry] };
+  const entries =
+    idx >= 0
+      ? [...state.entries.slice(0, idx), entry, ...state.entries.slice(idx + 1)]
+      : [...state.entries, entry];
+  // Preserve other top-level fields (e.g. runStart).
+  return { ...state, entries };
+}
+
+/** Record the git HEAD at run start, keyed by run id (capped to the last 50 runs). */
+export async function recordRunStart(
+  stateFile: string,
+  runId: string,
+  sha: string,
+): Promise<void> {
+  if (!runId || !sha) return;
+  await withStateLock(stateFile, () => {
+    const state = loadState(stateFile);
+    const runStart = state.runStart ?? {};
+    runStart[runId] = sha;
+    const keys = Object.keys(runStart);
+    for (const k of keys.slice(0, Math.max(0, keys.length - 50))) {
+      delete runStart[k];
+    }
+    saveState(stateFile, { ...state, runStart });
+  });
+}
+
+/** Read and remove a run's start SHA (consumed once by push --final). */
+export async function takeRunStart(
+  stateFile: string,
+  runId: string,
+): Promise<string | undefined> {
+  if (!runId) return undefined;
+  return withStateLock(stateFile, () => {
+    const state = loadState(stateFile);
+    const sha = state.runStart?.[runId];
+    if (sha && state.runStart) {
+      delete state.runStart[runId];
+      saveState(stateFile, state);
+    }
+    return sha;
+  });
 }

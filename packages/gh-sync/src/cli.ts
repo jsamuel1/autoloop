@@ -1,19 +1,16 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import type { IssueSyncConfig } from "@mobrienv/autoloop-issue-sync-core";
 import {
-  appendFileSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-} from "node:fs";
-import { dirname, join } from "node:path";
-import type {
-  IssueSyncConfig,
-  TaskLike,
-  TasksApi,
+  createJsonlTasksApi,
+  pull,
+  push,
+  recordRunStart,
+  release,
+  takeRunStart,
 } from "@mobrienv/autoloop-issue-sync-core";
-import { pull, push, release } from "@mobrienv/autoloop-issue-sync-core";
 import type { GhSyncConfig } from "./adapter.js";
 import { GhAdapter } from "./adapter.js";
 
@@ -23,10 +20,6 @@ function loadIssueSyncConfig(projectDir: string): IssueSyncConfig {
     throw new Error(`No .autoloop/issue-sync.toml found in ${projectDir}`);
   }
   const raw = readFileSync(tomlPath, "utf-8");
-  return parseIssueSyncToml(raw);
-}
-
-function parseIssueSyncToml(raw: string): IssueSyncConfig {
   const repoMatch = raw.match(/^\s*repo\s*=\s*"([^"]+)"/m);
   const labelMatch = raw.match(/^\s*queued_label\s*=\s*"([^"]+)"/m);
   return {
@@ -38,73 +31,13 @@ function parseIssueSyncToml(raw: string): IssueSyncConfig {
   };
 }
 
-function getCurrentBranch(): string | undefined {
-  const result = spawnSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
-    encoding: "utf-8",
-  });
-  return result.status === 0 ? result.stdout.trim() : undefined;
+function git(args: string[]): string | undefined {
+  const r = spawnSync("git", args, { encoding: "utf-8" });
+  return r.status === 0 && r.stdout ? r.stdout.trim() : undefined;
 }
 
-function runStartFile(projectDir: string): string {
-  return join(projectDir, ".autoloop", "issue-sync-runstart.json");
-}
-
-// Record HEAD at run start (pre_run/pull), keyed by run id, so push --final can scan
-// the commits this run produced.
-function recordRunStart(projectDir: string, runId: string): void {
-  if (!runId) return;
-  const head = spawnSync("git", ["rev-parse", "HEAD"], { encoding: "utf-8" });
-  if (head.status !== 0 || !head.stdout) return;
-  const file = runStartFile(projectDir);
-  let map: Record<string, string> = {};
-  if (existsSync(file)) {
-    try {
-      map = JSON.parse(readFileSync(file, "utf-8")) as Record<string, string>;
-    } catch {
-      map = {};
-    }
-  }
-  map[runId] = head.stdout.trim();
-  // Cap growth: keep the most recent 50 run entries.
-  const keys = Object.keys(map);
-  if (keys.length > 50) {
-    for (const k of keys.slice(0, keys.length - 50)) delete map[k];
-  }
-  mkdirSync(dirname(file), { recursive: true });
-  writeFileSync(file, `${JSON.stringify(map, null, 2)}\n`, "utf-8");
-}
-
-// Drop a run's start SHA once push --final has consumed it, so the file stays small.
-function pruneRunStart(projectDir: string, runId: string): void {
-  if (!runId) return;
-  const file = runStartFile(projectDir);
-  if (!existsSync(file)) return;
-  let map: Record<string, string> = {};
-  try {
-    map = JSON.parse(readFileSync(file, "utf-8")) as Record<string, string>;
-  } catch {
-    return;
-  }
-  if (!(runId in map)) return;
-  delete map[runId];
-  writeFileSync(file, `${JSON.stringify(map, null, 2)}\n`, "utf-8");
-}
-
-// Commit messages produced since this run started (runStartSha..HEAD).
-function commitTextsForRun(projectDir: string, runId: string): string[] {
-  if (!runId) return [];
-  const file = runStartFile(projectDir);
-  if (!existsSync(file)) return [];
-  let start: string | undefined;
-  try {
-    start = (JSON.parse(readFileSync(file, "utf-8")) as Record<string, string>)[
-      runId
-    ];
-  } catch {
-    return [];
-  }
-  if (!start) return [];
-  const r = spawnSync("git", ["log", `${start}..HEAD`, "--format=%B%x1e"], {
+function gitCommitTexts(startSha: string): string[] {
+  const r = spawnSync("git", ["log", `${startSha}..HEAD`, "--format=%B%x1e"], {
     encoding: "utf-8",
   });
   if (r.status !== 0 || !r.stdout) return [];
@@ -114,119 +47,63 @@ function commitTextsForRun(projectDir: string, runId: string): string[] {
     .filter(Boolean);
 }
 
-function makeTasksFile(projectDir: string): string {
+function tasksFileFor(projectDir: string): string {
   return (
     process.env.AUTOLOOP_TASKS_FILE ??
     join(projectDir, ".autoloop", "tasks.jsonl")
   );
 }
 
-function makeJsonlTasksApi(tasksFile: string): TasksApi {
-  function readEntries(): TaskLike[] {
-    if (!existsSync(tasksFile)) return [];
-    const lines = readFileSync(tasksFile, "utf-8").split("\n").filter(Boolean);
-    const byId = new Map<string, TaskLike>();
-    for (const line of lines) {
-      try {
-        const obj = JSON.parse(line) as {
-          id: string;
-          type: string;
-          text?: string;
-          status?: string;
-          source?: string;
-          target_id?: string;
-        };
-        if (obj.type === "task") {
-          byId.set(obj.id, {
-            id: obj.id,
-            text: obj.text ?? "",
-            status: obj.status === "done" ? "done" : "open",
-            source: obj.source ?? "manual",
-          });
-        } else if (obj.type === "task-tombstone" && obj.target_id) {
-          byId.delete(obj.target_id);
-        }
-      } catch {
-        /* skip malformed lines */
-      }
-    }
-    return [...byId.values()];
-  }
-
-  return {
-    listOpen: () => readEntries().filter((t) => t.status === "open"),
-    listDone: () => readEntries().filter((t) => t.status === "done"),
-    addTask: (text: string, source: string): string => {
-      const entries = readEntries();
-      // Use max(existing N)+1, not count+1 — the latter collides with reused/non-sequential ids.
-      const maxN = entries.reduce((m, t) => {
-        const match = /^task-(\d+)$/.exec(t.id);
-        return match ? Math.max(m, Number(match[1])) : m;
-      }, 0);
-      const id = `task-${maxN + 1}`;
-      const line = JSON.stringify({
-        id,
-        type: "task",
-        text,
-        status: "open",
-        source,
-        created: new Date().toISOString(),
-      });
-      mkdirSync(dirname(tasksFile), { recursive: true });
-      appendFileSync(tasksFile, `${line}\n`, "utf-8");
-      return id;
-    },
-  };
-}
-
 async function main() {
   const cliArgs = process.argv.slice(2);
   const subcommand = cliArgs[0];
   const projectDir = process.env.AUTOLOOP_PROJECT_DIR ?? process.cwd();
+  const runId = process.env.AUTOLOOP_RUN_ID ?? "";
   const stateFile = join(projectDir, ".autoloop", "issue-sync-state.json");
-  const tasksFile = makeTasksFile(projectDir);
 
   if (!subcommand || subcommand === "--help" || subcommand === "help") {
     console.log("Usage: autoloop-gh-sync <pull|push|release> [options]");
     console.log(
-      "  pull                  Pull issues from GitHub into task queue",
+      "  pull                       Pull GitHub issues into the queue",
     );
-    console.log("  push                  Push completed tasks back to GitHub");
-    console.log("  release <version>     Promote In-Review issues to Done");
+    console.log(
+      "  push [--final]             Push completed work back to GitHub",
+    );
+    console.log(
+      "  release <version> [--no-archive]   Promote In-Review issues to Done",
+    );
     process.exit(0);
   }
 
   const config = loadIssueSyncConfig(projectDir);
-  const ghConfig: GhSyncConfig = {
+  const adapter = new GhAdapter({
     repo: config.github?.repo ?? "",
     queuedLabel: config.github?.queuedLabel,
-  };
-  const adapter = new GhAdapter(ghConfig);
-  const tasksApi = makeJsonlTasksApi(tasksFile);
+  } satisfies GhSyncConfig);
+  const tasksApi = createJsonlTasksApi(tasksFileFor(projectDir));
   const noteCtx = {
-    runId: process.env.AUTOLOOP_RUN_ID,
-    branch: getCurrentBranch(),
+    runId: runId || undefined,
+    branch: git(["rev-parse", "--abbrev-ref", "HEAD"]),
   };
 
   if (subcommand === "pull") {
     const result = await pull(adapter, config, tasksApi, stateFile);
-    recordRunStart(projectDir, process.env.AUTOLOOP_RUN_ID ?? "");
+    const head = git(["rev-parse", "HEAD"]);
+    if (head) await recordRunStart(stateFile, runId, head);
     console.log(`autoloop-gh-sync pull: added ${result.added} issue(s)`);
     for (const it of result.addedIssues) {
       console.log(`  + ${it.identifier ?? it.externalId}  ${it.title}`);
     }
   } else if (subcommand === "push") {
     const final = cliArgs.includes("--final");
-    // Reference-based transition: run end (--final) + run completed + commits landed.
     const stopReason = process.env.AUTOLOOP_STOP_REASON;
     const runCompleted = !stopReason || stopReason === "completed";
     const enable = final && runCompleted;
-    const commitTexts = enable
-      ? commitTextsForRun(projectDir, process.env.AUTOLOOP_RUN_ID ?? "")
-      : [];
+    const startSha = enable ? await takeRunStart(stateFile, runId) : undefined;
+    const commitTexts = startSha ? gitCommitTexts(startSha) : [];
     const result = await push(adapter, config, tasksApi, stateFile, noteCtx, {
       currentBranch: noteCtx.branch,
-      branchBased: enable && commitTexts.length > 0,
+      branchBased: enable && (commitTexts.length > 0 || !runId),
       commitTexts,
     });
     console.log(
@@ -242,11 +119,10 @@ async function main() {
         `  + ${it.identifier ?? it.externalId} (created)  ${it.title}`,
       );
     }
-    if (final) pruneRunStart(projectDir, process.env.AUTOLOOP_RUN_ID ?? "");
   } else if (subcommand === "release") {
-    const version = cliArgs[1];
+    const version = cliArgs.slice(1).find((a) => !a.startsWith("--"));
     if (!version) {
-      console.error("Usage: autoloop-gh-sync release <version>");
+      console.error("Usage: autoloop-gh-sync release <version> [--no-archive]");
       process.exit(1);
     }
     const result = await release(
@@ -256,20 +132,23 @@ async function main() {
       version,
       undefined,
       noteCtx,
+      { archive: !cliArgs.includes("--no-archive") },
     );
     console.log(
       `autoloop-gh-sync release: promoted ${result.promoted} issue(s) to Done`,
     );
+    const currentBranch = git(["rev-parse", "--abbrev-ref", "HEAD"]);
     for (const it of result.promotedIssues) {
       console.log(`  ✓ ${it.identifier ?? it.externalId} → Done`);
-      // Delete the merged per-issue branch (local, safe: -d only removes if merged).
-      if (it.branchName) {
+      if (it.branchName && it.branchName !== currentBranch) {
         const del = spawnSync("git", ["branch", "-d", it.branchName], {
           encoding: "utf-8",
         });
-        if (del.status === 0) {
-          console.log(`    deleted merged branch ${it.branchName}`);
-        }
+        console.log(
+          del.status === 0
+            ? `    deleted merged branch ${it.branchName}`
+            : `    kept ${it.branchName} (unmerged or absent)`,
+        );
       }
     }
   } else {

@@ -9,19 +9,15 @@ import type {
 } from "../src/adapter.js";
 import type { IssueSyncConfig } from "../src/config.js";
 import type { TaskLike, TasksApi } from "../src/operations.js";
-import {
-  pull,
-  push,
-  referencedExternalIds,
-  release,
-} from "../src/operations.js";
-import { loadState } from "../src/state.js";
+import { closedExternalIds, pull, push, release } from "../src/operations.js";
+import { loadState, recordRunStart, takeRunStart } from "../src/state.js";
 
 class FakeAdapter implements TrackerAdapter {
   issues: Map<string, Issue> = new Map();
   transitions: Array<{ id: string; state: string }> = [];
   comments: Array<{ id: string; body: string }> = [];
   archived: string[] = [];
+  failTransitions: Set<string> = new Set();
   nextId = 1;
 
   async listIssues(states: string[]): Promise<Issue[]> {
@@ -36,6 +32,7 @@ class FakeAdapter implements TrackerAdapter {
   }
 
   async transitionIssue(id: string, targetState: string): Promise<void> {
+    if (this.failTransitions.has(id)) throw new Error(`boom: ${id}`);
     this.transitions.push({ id, state: targetState });
     const issue = this.issues.get(id);
     if (issue) issue.status = targetState;
@@ -258,9 +255,47 @@ describe("push", () => {
       state: "In Review",
     });
   });
+
+  it("a failing transition doesn't block others; successes persist", async () => {
+    adapter.seed("i1", "A", "Todo");
+    adapter.seed("i2", "B", "Todo");
+    await pull(adapter, linearConfig, tasksApi, stateFile);
+    for (const t of tasksApi.listOpen()) tasksApi.markDone(t.id);
+    adapter.failTransitions.add("i1");
+
+    const result = await push(adapter, linearConfig, tasksApi, stateFile);
+    expect(result.transitioned).toBe(1);
+    expect(adapter.transitions).toContainEqual({
+      id: "i2",
+      state: "In Review",
+    });
+
+    const state = loadState(stateFile);
+    expect(
+      state.entries.find((e) => e.externalId === "i2")?.lastSyncedStatus,
+    ).toBe("In Review");
+    expect(
+      state.entries.find((e) => e.externalId === "i1")?.lastSyncedStatus,
+    ).toBe("Todo");
+  });
 });
 
-describe("referencedExternalIds", () => {
+describe("run-start tracking", () => {
+  it("records then consumes a run-start sha", async () => {
+    const stateFile = makeStateFile();
+    await recordRunStart(stateFile, "run-1", "abc123");
+    expect(await takeRunStart(stateFile, "run-1")).toBe("abc123");
+    expect(await takeRunStart(stateFile, "run-1")).toBeUndefined();
+  });
+
+  it("ignores an empty run id", async () => {
+    const stateFile = makeStateFile();
+    await recordRunStart(stateFile, "", "abc");
+    expect(await takeRunStart(stateFile, "")).toBeUndefined();
+  });
+});
+
+describe("closedExternalIds", () => {
   const entries = [
     {
       taskId: "t1",
@@ -285,31 +320,31 @@ describe("referencedExternalIds", () => {
     },
   ];
 
-  it("matches an identifier, word-bounded", () => {
-    expect(
-      referencedExternalIds(entries, ["fix: static export (SAU-22)"]),
-    ).toEqual(["i1"]);
-  });
-
-  it("does not match a longer identifier (SAU-2 must not match SAU-22)", () => {
-    expect(referencedExternalIds(entries, ["work on SAU-22"])).not.toContain(
-      "i2",
+  it("matches a tagged identifier (conventional-commit trailer)", () => {
+    expect(closedExternalIds(entries, ["fix: static export (SAU-22)"])).toEqual(
+      ["i1"],
     );
   });
 
-  it("matches the exact shorter identifier", () => {
-    expect(referencedExternalIds(entries, ["done SAU-2 today"])).toContain(
-      "i2",
+  it("matches a closing keyword", () => {
+    const out = closedExternalIds(entries, ["Fixes SAU-2 finally"]);
+    expect(out).toContain("i2");
+    expect(out).not.toContain("i1");
+  });
+
+  it("does NOT match a bare mention (no keyword, no brackets)", () => {
+    expect(closedExternalIds(entries, ["see SAU-22; unlike SAU-2"])).toEqual(
+      [],
     );
   });
 
-  it("matches github #42 but not #421", () => {
-    expect(referencedExternalIds(entries, ["closes #42"])).toContain("42");
-    expect(referencedExternalIds(entries, ["closes #421"])).not.toContain("42");
+  it("respects boundaries: closes #42 matches, #421 does not", () => {
+    expect(closedExternalIds(entries, ["closes #42"])).toContain("42");
+    expect(closedExternalIds(entries, ["closes #421"])).not.toContain("42");
   });
 
   it("returns [] when there are no commits", () => {
-    expect(referencedExternalIds(entries, [])).toEqual([]);
+    expect(closedExternalIds(entries, [])).toEqual([]);
   });
 });
 
