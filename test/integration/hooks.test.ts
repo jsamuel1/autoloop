@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
@@ -101,7 +101,8 @@ describe("integration: [hooks] lifecycle", () => {
     expect(res.status).toBe(0);
     expect(existsSync(envFile)).toBe(true);
     const content = readFileSync(envFile, "utf-8");
-    expect(content).toContain(`dir=${project}`);
+    // AUTOLOOP_PROJECT_DIR is the work dir, realpath-resolved (macOS /tmp -> /private/var).
+    expect(content).toContain(`dir=${realpathSync(project)}`);
     expect(content).toMatch(/run=\S+/);
     expect(content).toContain("tasks=");
   });

@@ -18,7 +18,9 @@ export function buildHookEnv(
   extra?: { iteration?: number; gitShaBefore?: string; gitShaAfter?: string },
 ): HookEnv {
   const env: HookEnv = {
-    AUTOLOOP_PROJECT_DIR: loop.paths.projectDir,
+    // The work dir is the repo being worked (where .autoloop/issue-sync.toml lives);
+    // projectDir can be the preset directory, which is not what hooks want.
+    AUTOLOOP_PROJECT_DIR: loop.paths.workDir,
     AUTOLOOP_RUN_ID: loop.runtime.runId,
     AUTOLOOP_PRESET: loop.launch.preset,
     AUTOLOOP_TASKS_FILE: loop.paths.tasksFile,
@@ -87,7 +89,15 @@ export function runHook(
 
   const failed = result.status !== 0 || result.error;
   if (failed) {
-    const msg = `hook ${name} failed (exit ${result.status ?? -1}): ${result.error?.message ?? combined.trim().split("\n")[0] ?? ""}`;
+    // Surface the first meaningful line — prefer stderr (where errors land), then
+    // stdout. Don't echo the literal "[stderr]" marker as the summary.
+    const detail = (result.stderr ?? "").trim() || (result.stdout ?? "").trim();
+    const firstLine =
+      detail
+        .split("\n")
+        .map((l) => l.trim())
+        .find((l) => l.length > 0) ?? "";
+    const msg = `hook ${name} failed (exit ${result.status ?? -1}): ${result.error?.message ?? firstLine}`;
     log(loop, "warn", msg);
     if (loop.hooks.strict && name === "pre_run") {
       throw new Error(`Aborting run: ${msg}`);

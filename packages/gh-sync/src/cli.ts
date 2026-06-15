@@ -83,7 +83,12 @@ function makeJsonlTasksApi(tasksFile: string): TasksApi {
     listDone: () => readEntries().filter((t) => t.status === "done"),
     addTask: (text: string, source: string): string => {
       const entries = readEntries();
-      const id = `task-${entries.length + 1}`;
+      // Use max(existing N)+1, not count+1 — the latter collides with reused/non-sequential ids.
+      const maxN = entries.reduce((m, t) => {
+        const match = /^task-(\d+)$/.exec(t.id);
+        return match ? Math.max(m, Number(match[1])) : m;
+      }, 0);
+      const id = `task-${maxN + 1}`;
       const line = JSON.stringify({
         id,
         type: "task",
